@@ -1,24 +1,25 @@
 import pickle
-import datetime
 import collections
 from django.db.models import signals
 from django.contrib.contenttypes.models import ContentType
 
-from instancehistory.signals import post_change
+# from instancehistory.signals import post_change
 from instancehistory.models import InstanceStateHistory
+from instancehistory.signals import get_request
 
 SAVE = 0
 DELETE = 1
 
-class HistoryMixin(object):
+
+class InstanceHistoryMixin(object):
     def __init__(self, *args, **kwargs):
-        super(HistoryMixin, self).__init__(*args, **kwargs)
+        super(InstanceHistoryMixin, self).__init__(*args, **kwargs)
 
         signals.post_save.connect(
             _post_save, sender=self.__class__,
             dispatch_uid='django-changes-%s' % self.__class__.__name__
         )
-        
+
         signals.post_delete.connect(
             _post_delete, sender=self.__class__,
             dispatch_uid='django-changes-%s' % self.__class__.__name__
@@ -29,11 +30,15 @@ class HistoryMixin(object):
         return ContentType.objects.get_for_model(self)
 
     def _save_state(self, new_instance=False, event_type='save'):
-        
+        """Create state for each instance"""
+
+        request = get_request()
+
         InstanceStateHistory.objects.create(
             state=pickle.dumps(self.fields_values()),
             content_type=self.content_type,
-            object_id=self.id
+            object_id=self.id,
+            changed_by=request.user
             )
 
     def fields_values(self):
@@ -44,6 +49,10 @@ class HistoryMixin(object):
         [field_names.add(f.name) for f in self._meta.local_fields]
         [field_names.add(f.attname) for f in self._meta.local_fields]
         return dict([(field_name, getattr(self, field_name)) for field_name in field_names])
+
+    @property
+    def latest_state_created_by(self):
+        return self.history.latest('id').changed_by
 
     @property
     def history(self):
@@ -73,6 +82,7 @@ class HistoryMixin(object):
             for k, v in d.iteritems():
                 super_dict[k].add(v)
         return dict(super_dict)
+
 
 def _post_save(sender, instance, **kwargs):
     instance._save_state(new_instance=False, event_type=SAVE)

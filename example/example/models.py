@@ -1,9 +1,10 @@
 from django.db import models
 from django.contrib.auth.models import User
 
-from instancehistory.history import HistoryMixin
+from instancehistory.history import InstanceHistoryMixin
 
-class Person(HistoryMixin, models.Model):
+
+class Person(InstanceHistoryMixin, models.Model):
 
     """ an actual singular human being """
 
@@ -11,7 +12,7 @@ class Person(HistoryMixin, models.Model):
     search_feilds = ['name']
     tables2_fields = ('name', 'email')
     tables2_css_class = "table table-bordered table-condensed"
-    tables2_pagination = 20 # default is 10
+    tables2_pagination = 20  # default is 10
     modelform_excludes = ['created_by']
 
     # model fields
@@ -22,4 +23,3 @@ class Person(HistoryMixin, models.Model):
 
     def __unicode__(self):
         return self.name
-
