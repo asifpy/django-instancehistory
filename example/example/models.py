@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from instancehistory.history import InstanceHistoryMixin
 
 
-class Person(InstanceHistoryMixin):
+class Person(InstanceHistoryMixin, models.Model):
 
     """ an actual singular human being """
 

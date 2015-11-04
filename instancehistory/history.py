@@ -1,8 +1,7 @@
 import pickle
 import collections
-from django.db.models import signals, Model
+from django.db.models import signals
 from django.contrib.contenttypes.models import ContentType
-from django.contrib.contenttypes.fields import GenericRelation
 
 
 # from instancehistory.signals import post_change
@@ -13,9 +12,7 @@ SAVE = 0
 DELETE = 1
 
 
-class InstanceHistoryMixin(Model):
-    history = GenericRelation(InstanceStateHistory)
-
+class InstanceHistoryMixin(object):
     def __init__(self, *args, **kwargs):
         super(InstanceHistoryMixin, self).__init__(*args, **kwargs)
 
@@ -39,6 +36,7 @@ class InstanceHistoryMixin(Model):
         request = get_request()
 
         InstanceStateHistory.objects.create(
+            state=pickle.dumps(self.fields_values()),
             content_object=self,
             changed_by=request.user
             )
@@ -58,27 +56,32 @@ class InstanceHistoryMixin(Model):
         return self.history.all().latest('id').changed_by
 
     @property
-    def all_history(self):
+    def history(self):
         """
         Returns all history objects for the specific instance
         """
-        return self.history.all()
+        return InstanceStateHistory.objects.filter(
+            object_id=self.id,
+            content_type=self.content_type
+            )
 
     @property
     def current_state(self):
         """
         Returns a ``field -> value`` dict of the current state of the instance.
         """
-        return self.history.all().latest('id')
+        state = self.history.latest('id').state
+        return pickle.loads(state)
 
     @property
     def changes(self):
         super_dict = collections.defaultdict(set)
-        all_history = self.all_history
+        states = self.history.values_list('state', flat=True)
+        pickled_states = [pickle.loads(state) for state in states]
 
-        for history_obj in all_history:
-            for field in history_obj._meta.fields:
-                super_dict[field.name].add(getattr(history_obj, field.name))
+        for d in pickled_states:
+            for k, v in d.iteritems():
+                super_dict[k].add(v)
         return dict(super_dict)
 
 
