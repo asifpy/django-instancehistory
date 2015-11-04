@@ -1,7 +1,9 @@
 import pickle
 import collections
-from django.db.models import signals
+from django.db.models import signals, Model
 from django.contrib.contenttypes.models import ContentType
+from django.contrib.contenttypes.fields import GenericRelation
+
 
 # from instancehistory.signals import post_change
 from instancehistory.models import InstanceStateHistory
@@ -11,7 +13,9 @@ SAVE = 0
 DELETE = 1
 
 
-class InstanceHistoryMixin(object):
+class InstanceHistoryMixin(Model):
+    history = GenericRelation(InstanceStateHistory)
+
     def __init__(self, *args, **kwargs):
         super(InstanceHistoryMixin, self).__init__(*args, **kwargs)
 
@@ -35,9 +39,7 @@ class InstanceHistoryMixin(object):
         request = get_request()
 
         InstanceStateHistory.objects.create(
-            state=pickle.dumps(self.fields_values()),
-            content_type=self.content_type,
-            object_id=self.id,
+            content_object=self,
             changed_by=request.user
             )
 
@@ -52,35 +54,31 @@ class InstanceHistoryMixin(object):
 
     @property
     def latest_state_created_by(self):
-        return self.history.latest('id').changed_by
+        """Who created last history"""
+        return self.history.all().latest('id').changed_by
 
     @property
-    def history(self):
+    def all_history(self):
         """
-        Returns all the state history objects
+        Returns all history objects for the specific instance
         """
-        return InstanceStateHistory.objects.filter(
-            object_id=self.id,
-            content_type=self.content_type,
-            )
+        return self.history.all()
 
     @property
     def current_state(self):
         """
         Returns a ``field -> value`` dict of the current state of the instance.
         """
-        state = self.history.latest('id').state
-        return pickle.loads(state)
+        return self.history.all().latest('id')
 
     @property
     def changes(self):
-        states = self.history.values_list('state', flat=True)
-        pickled_states = [pickle.loads(state) for state in states]
-
         super_dict = collections.defaultdict(set)
-        for d in pickled_states:
-            for k, v in d.iteritems():
-                super_dict[k].add(v)
+        all_history = self.all_history
+
+        for history_obj in all_history:
+            for field in history_obj._meta.fields:
+                super_dict[field.name].add(getattr(history_obj, field.name))
         return dict(super_dict)
 
 
